@@ -36,6 +36,7 @@ import cloudscheduler.__version__ as version
 import cloudscheduler.info_server as info_server
 import cloudscheduler.cloud_management as cloud_management
 import cloudscheduler.job_management as job_management
+import cloudscheduler.resource_selection as resource_selection
 
 log = utilities.get_cloudscheduler_logger()
 
@@ -158,7 +159,7 @@ class Scheduler(threading.Thread):
                         if job.job_status == self.HELD:
                             continue
                         # Find resources that match the job's requirements
-                        (pri_rsrc, sec_rsrc) = self.resource_pool.get_resourceBF(job.req_network, \
+                        (pri_rsrc, sec_rsrc) = self.resource_selector.get_resource(self.resource_pool, job.req_network, \
                         job.req_cpuarch, job.req_memory, job.req_cpucores, job.req_storage)
                         
                         good_resources = [pri_rsrc]
@@ -523,6 +524,8 @@ class Cleanup(threading.Thread):
             time.sleep(self.polling_interval)
 
         log.debug("Exiting cleanup thread")
+
+
 ##
 ## Functions
 ##
@@ -591,6 +594,9 @@ def main():
 
     # Log the resource pool
     cloud_resources.log_pool()
+
+    # Create the resource selector
+    resource_selector = resource_selection.ResourceSelector(config)
 
     # Start the cloud scheduler info server for RPCs
     info_serv = info_server.CloudSchedulerInfoServer(cloud_resources, job_pool)

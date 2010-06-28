@@ -40,6 +40,7 @@ log_location = None
 log_stdout = False
 log_max_size = None
 
+resource_selection_strategy = "best_fit_resource_selection_strategy.py"
 
 # setup will look for a configuration file specified on the command line,
 # or in ~/.cloudscheduler.conf or /etc/cloudscheduler.conf
@@ -166,6 +167,9 @@ def setup(path=None):
 
     if config_file.has_option("global", "graceful_shutdown"):
         graceful_shutdown = config_file.getboolean("global", "graceful_shutdown")
+
+    if config_file.has_option("global", "resource_selection_strategy"):
+        resource_selection_strategy = config_file.get("global", "resource_selection_strategy")
             
     if config_file.has_option("logging", "log_level"):
         log_level = config_file.get("logging", "log_level")
