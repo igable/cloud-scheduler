@@ -1,6 +1,12 @@
 from resource_selection_strategy import IResourceSelectionStrategy
 
+log = None
+
 class ResourceSelectionStrategy(IResourceSelectionStrategy):
+
+    def __init__(self):
+        global log
+        log = logging.getLogger("cloudscheduler")
 
     def get_name(self):
         return "first fit"

@@ -99,6 +99,9 @@ class Scheduler(threading.Thread):
         self.scheduling_interval = 5 # seconds
         self.starting_poll_interval = 120 # 2 minutes
         self.running_poll_interval = 900 # 15 minutes
+        # Create the resource selector
+        self.resource_selector = resource_selection.ResourceSelector(config)
+
 
     def stop(self):
         log.debug("Waiting for scheduling loop to end")
@@ -159,6 +162,7 @@ class Scheduler(threading.Thread):
                         if job.job_status == self.HELD:
                             continue
                         # Find resources that match the job's requirements
+                        log.debug("About to call the resource selection strategy's get_resource() method...")
                         (pri_rsrc, sec_rsrc) = self.resource_selector.get_resource(self.resource_pool, job.req_network, \
                         job.req_cpuarch, job.req_memory, job.req_cpucores, job.req_storage)
                         
@@ -594,9 +598,6 @@ def main():
 
     # Log the resource pool
     cloud_resources.log_pool()
-
-    # Create the resource selector
-    resource_selector = resource_selection.ResourceSelector(config)
 
     # Start the cloud scheduler info server for RPCs
     info_serv = info_server.CloudSchedulerInfoServer(cloud_resources, job_pool)

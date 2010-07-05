@@ -1,10 +1,12 @@
 import logging
 from resource_selection_strategy import IResourceSelectionStrategy
 
+log = None
 class ResourceSelectionStrategy(IResourceSelectionStrategy):
 
-    def __init__(self,):
-        self.log = logging.getLogger("cloudscheduler")
+    def __init__(self):
+        global log
+        log = logging.getLogger("cloudscheduler")
 
     def get_name(self):
         return "best fit"
@@ -42,12 +44,12 @@ class ResourceSelectionStrategy(IResourceSelectionStrategy):
 
         # If list is empty (no resources fit), return None
         if len(fitting_clusters) == 0:
-            self.log.debug("No clusters fit requirements. Fitting resources list is empty.")
+            log.debug("No clusters fit requirements. Fitting resources list is empty.")
             return (None, None)
 
         # If the list has only 1 item, return immediately
         if len(fitting_clusters) == 1:
-            self.log.debug("Only one cluster fits parameters. Returning that cluster.")
+            log.debug("Only one cluster fits parameters. Returning that cluster.")
             return (fitting_clusters[0], None)
 
         # Set the most-balanced and next-most-balanced initial values

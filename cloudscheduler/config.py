@@ -40,7 +40,7 @@ log_location = None
 log_stdout = False
 log_max_size = None
 
-resource_selection_strategy = "best_fit_resource_selection_strategy.py"
+resource_selection_strategy = "/usr/local/lib64/python2.6/site-packages/cloudscheduler/best_fit_resource_selection_strategy.py"
 
 # setup will look for a configuration file specified on the command line,
 # or in ~/.cloudscheduler.conf or /etc/cloudscheduler.conf
@@ -68,6 +68,8 @@ def setup(path=None):
     global log_location
     global log_stdout
     global log_max_size
+
+    global resource_selection_strategy
 
     homedir = os.path.expanduser('~')
 
