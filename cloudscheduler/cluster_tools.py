@@ -1504,9 +1504,6 @@ class EC2Cluster(ICluster):
                     # run a dig -x on the ip address
                     dig_cmd = ['dig', '-x', instance.ip_address]
                     (dig_return, dig_out, dig_err) = self.vm_execwait(dig_cmd, env=vm.get_env())
-                    print dig_return
-                    #print dig_out
-                    print dig_err
                     # extract the hostname from dig -x output
                     vm.hostname = self._extract_host_from_dig(dig_out)
             vm.lastpoll = int(time.time())
