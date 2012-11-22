@@ -93,7 +93,7 @@ class Job:
              VMProxyNonBoot=config.default_VMProxyNonBoot,
              VMImageProxyFile=None, VMTypeLimit=-1, VMImageID=None,
              VMInstanceTypeIBM=None, VMLocation=None, VMKeyName=None,
-             VMSecurityGroup=None, **kwargs):
+             VMSecurityGroup="", **kwargs):
         """
      Parameters:
      GlobalJobID  - (str) The ID of the job (via condor). Functions as name.
@@ -173,6 +173,8 @@ class Job:
         self.location = VMLocation
         self.key_name = VMKeyName
         self.req_security_group = splitnstrip(',', VMSecurityGroup)
+        if len(self.req_security_group[0]) == 0:
+            self.req_security_group = []
 
         # Set the new job's status
         if self.job_status == 2:

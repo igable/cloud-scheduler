@@ -1294,8 +1294,8 @@ class EC2Cluster(ICluster):
                          storage=storage, hypervisor=hypervisor, boot_timeout=None)
 
         if not security_group:
-            security_group = "default"
-        self.security_groups = [security_group]
+            security_group = ["default"]
+        self.security_groups = security_group
 
         if not access_key_id or not secret_access_key:
             log.error("Cannot connect to cluster %s "
@@ -1381,7 +1381,7 @@ class EC2Cluster(ICluster):
                         reservation = image.run(1,1, key_name=self.key_name,
                                                 addressing_type=addressing_type,
                                                 user_data=user_data,
-                                                security_groups=self.security_groups,
+                                                security_groups=sec_group,
                                                 instance_type=instance_type)
                         instance_id = reservation.instances[0].id
                         log.debug("Booted VM %s" % instance_id)
@@ -1398,7 +1398,7 @@ class EC2Cluster(ICluster):
                                                   key_name=self.key_name,
                                                   user_data=user_data,
                                                   addressing_type=addressing_type,
-                                                  security_groups=self.security_groups,
+                                                  security_groups=sec_group,
                                                   instance_type=instance_type)
                         spot_id = str(reservation[0].id)
                         instance_id = ""
@@ -1496,10 +1496,34 @@ class EC2Cluster(ICluster):
                 vm.last_state_change = int(time.time())
                 log.debug("VM: %s on %s. Changed from %s to %s." % (vm.id, self.name, vm.status, self.VM_STATES.get(instance.state, "Starting")))
             vm.status = self.VM_STATES.get(instance.state, "Starting")
-            vm.hostname = instance.public_dns_name
+            if self.name != 'nova':
+                vm.hostname = instance.public_dns_name
+            else:
+                #vm.ipaddress = instance.ip_address
+                if len(vm.hostname) == 0:
+                    # run a dig -x on the ip address
+                    dig_cmd = ['dig', '-x', instance.ip_address]
+                    (dig_return, dig_out, dig_err) = self.vm_execwait(dig_cmd, env=vm.get_env())
+                    print dig_return
+                    #print dig_out
+                    print dig_err
+                    # extract the hostname from dig -x output
+                    vm.hostname = self._extract_host_from_dig(dig_out)
             vm.lastpoll = int(time.time())
         return vm.status
 
+    def _extract_host_from_dig(self, dig_out):
+        at_answer_line = False
+        hostname = ""
+        for line in dig_out.split('\n'):
+            parts = line.split()
+            if at_answer_line:
+                hostname = parts[-1][:-1]
+                break
+            elif 'ANSWER' in parts and 'SECTION:' in parts:
+                at_answer_line = True
+                continue
+        return hostname
 
     def vm_destroy(self, vm, return_resources=True, reason=""):
         """
@@ -1537,6 +1561,36 @@ class EC2Cluster(ICluster):
             self.vms.remove(vm)
 
         return 0
+
+    def vm_execwait(self, cmd, env=None):
+        """As above, a function to encapsulate command execution via Popen.
+        vm_execwait executes the given cmd list, waits for the process to finish,
+        and returns the return code of the process. STDOUT and STDERR are stored
+        in given parameters.
+        Parameters:
+        (cmd as above)
+        Returns:
+            ret   - The return value of the executed command
+            out   - The STDOUT of the executed command
+            err   - The STDERR of the executed command
+        The return of this function is a 3-tuple
+        """
+        out = ""
+        err = ""
+        try:
+            sp = Popen(cmd, shell=False,
+                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+            if not utilities.check_popen_timeout(sp):
+                (out, err) = sp.communicate(input=None)
+            else:
+                log.warning("Process %s timed out! cmd was %" % (sp.pid, " ".join(cmd)))
+            return (sp.returncode, out, err)
+        except OSError, e:
+            log.error("Problem running %s, got errno %d \"%s\"" % (string.join(cmd, " "), e.errno, e.strerror))
+            return (-1, "", "")
+        except:
+            log.error("Problem running %s, unexpected error: %s" % (string.join(cmd, " "), err))
+            return (-1, "", "")
 
 class IBMCluster(ICluster):
 
