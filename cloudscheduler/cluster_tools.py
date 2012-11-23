@@ -1305,6 +1305,7 @@ class EC2Cluster(ICluster):
         self.access_key_id = access_key_id
         self.secret_access_key = secret_access_key
         self.key_name = key_name
+        self.total_cpu_cores = -1
 
         connection = self._get_connection()
 
