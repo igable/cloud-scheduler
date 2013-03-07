@@ -40,9 +40,19 @@ except:
     import pickle
 
 import cluster_tools
+import ec2cluster
+import nimbuscluster
+try:
+    import ibmcluster
+except:
+    pass
 try:
     import stratuslabcluster
 except:
+    pass
+try:
+    import googlecluster
+except Exception as e:
     pass
 import cloudscheduler.config as config
 
@@ -286,7 +296,7 @@ class ResourcePool:
             for x in range(len(nets)):
                 net_slots[nets[x]] = slots[x]
             total_slots = sum(slots)
-            return cluster_tools.NimbusCluster(name = cluster,
+            return nimbuscluster.NimbusCluster(name = cluster,
                     host = get_or_none(config, cluster, "host"),
                     port = get_or_none(config, cluster, "port"),
                     cloud_type = get_or_none(config, cluster, "cloud_type"),
@@ -305,10 +315,11 @@ class ResourcePool:
                     scratch_attach_device = get_or_none(config, cluster, "scratch_attach_device"),
                     boot_timeout = get_or_none(config, cluster, "boot_timeout"),
                     total_cpu_cores = total_cpu_cores,
+                    temp_lease_storage = get_or_none(config, cluster, "temp_lease_storage"),
                     )
 
         elif cloud_type == "AmazonEC2" or cloud_type == "Eucalyptus" or cloud_type == "OpenStack":
-            return cluster_tools.EC2Cluster(name = cluster,
+            return ec2cluster.EC2Cluster(name = cluster,
                     host = get_or_none(config, cluster, "host"),
                     cloud_type = get_or_none(config, cluster, "cloud_type"),
                     memory = map(int, splitnstrip(",", get_or_none(config, cluster, "memory"))),
@@ -324,6 +335,8 @@ class ResourcePool:
                     hypervisor = hypervisor,
                     key_name = get_or_none(config, cluster, "key_name"),
                     boot_timeout = get_or_none(config, cluster, "boot_timeout"),
+                    secure_connection = get_or_none(config, cluster, "secure_connection"),
+                    regions = map(str, splitnstrip(",", get_or_none(config, cluster, "regions"))),
                     )
 
         elif cloud_type == "StratusLab" and stratuslab_support:
@@ -342,7 +355,7 @@ class ResourcePool:
                     )
 
         elif cloud_type.lower() == "ibmsmartcloud":
-            return cluster_tools.IBMCluster(name= cluster,
+            return ibmcluster.IBMCluster(name= cluster,
                     host= get_or_none(config, cluster, "host"),
                     cloud_type= get_or_none(config, cluster, "cloud_type"),
                     memory= map(int, splitnstrip(",", get_or_none(config, cluster, "memory"))),
@@ -355,6 +368,22 @@ class ResourcePool:
                     hypervisor= hypervisor,
                     username= get_or_none(config, cluster, "username"),
                     password= get_or_none(config, cluster, "password"),
+                    )
+        elif cloud_type.lower() == "googlecomputeengine" or cloud_type.lower() == "gce":
+            return googlecluster.GoogleComputeEngineCluster(name = cluster,
+                    cloud_type = get_or_none(config, cluster, "cloud_type"),
+                    memory = map(int, splitnstrip(",", get_or_none(config, cluster, "memory"))),
+                    max_vm_mem = max_vm_mem if max_vm_mem != None else -1,
+                    cpu_archs = splitnstrip(",", get_or_none(config, cluster, "cpu_archs")),
+                    networks = splitnstrip(",", get_or_none(config, cluster, "networks")),
+                    vm_slots = int(get_or_none(config, cluster, "vm_slots")),
+                    cpu_cores = int(get_or_none(config, cluster, "cpu_cores")),
+                    storage = int(get_or_none(config, cluster, "storage")),
+                    auth_dat_file = get_or_none(config, cluster, "auth_dat_file"),
+                    secret_file = get_or_none(config, cluster, "secret_file"),
+                    security_group = splitnstrip(",", get_or_none(config, cluster, "security_group")),
+                    boot_timeout = get_or_none(config, cluster, "boot_timeout"),
+                    project_id = get_or_none(config, cluster, "project_id"),
                     )
         else:
             log.error("ResourcePool.setup doesn't know what to do with the %s cloud_type" % cloud_type)
@@ -489,9 +518,6 @@ class ResourcePool:
             if cluster.name in blocked:
                 log.verbose("get_fitting_resources - %s is blocked." % cluster.name)
                 continue
-            if cluster.hypervisor not in hypervisor:
-                log.verbose("get_fitting_resources - Wrong hypervisor on %s" % cluster.name)
-                continue
             if cluster.__class__.__name__ == "NimbusCluster":
                 # If not valid image file to download
                 if imageloc == "":
@@ -522,6 +548,9 @@ class ResourcePool:
                     continue
                 if cluster.total_cpu_cores != -1 and cpucores > cluster.total_cpu_cores:
                     log.verbose("get_fitting_resources - cpu request greater than total available cores on %s" % cluster.name)
+                    continue
+                if cluster.hypervisor not in hypervisor:
+                    log.verbose("get_fitting_resources - Wrong hypervisor on %s" % cluster.name)
                     continue
             elif cluster.__class__.__name__ == "EC2Cluster":
                 # If no valid ami to boot from
@@ -622,7 +651,7 @@ class ResourcePool:
             return fitting_clusters
 
         # sort them based on how full and return the list
-        fitting_clusters.sort(key=lambda cluster: cluster.slot_fill_ratio, reverse=True)
+        fitting_clusters.sort(key=lambda cluster: cluster.slot_fill_ratio())
         return fitting_clusters
 
     def resourcePF(self, network, cpuarch, memory=0, disk=0, hypervisor=['xen']):
@@ -643,8 +672,6 @@ class ResourcePool:
         for cluster in self.resources:
             if not cluster.enabled:
                 continue
-            if cluster.hypervisor not in hypervisor:
-                continue
             # If the cluster does not have the required CPU architecture
             if not (cpuarch in cluster.cpu_archs):
                 continue
@@ -657,6 +684,8 @@ class ResourcePool:
             if not cluster.find_potential_mementry(memory):
                 continue
             if cluster.__class__.__name__ == "NimbusCluster" and cluster.max_vm_storage != -1 and disk > cluster.max_vm_storage:
+                continue
+            if cluster.__class__.__name__ == "NimbusCluster" and cluster.hypervisor not in hypervisor:
                 continue
             # Cluster meets network and cpu reqs and may have enough memory
             potential_fit = True
@@ -690,7 +719,7 @@ class ResourcePool:
                 continue
             if cluster.name in blocked:
                 continue
-            if cluster.hypervisor not in hypervisor:
+            if cluster.__class__.__name__ == "NimbusCluster" and cluster.hypervisor not in hypervisor:
                 continue
             if not (cpuarch in cluster.cpu_archs):
                 continue
@@ -1712,7 +1741,7 @@ class ResourcePool:
         for cluster in self.resources:
             for vm in cluster.vms:
                 if vm.vmtype == vmtype:
-                    if vm.status == "Starting":
+                    if vm.status == "Starting" or vm.status == "Unpropagated":
                         starting.append(vm)
         return starting
     
@@ -1732,7 +1761,7 @@ class ResourcePool:
         for cluster in self.resources:
             for vm in cluster.vms:
                 if vm.uservmtype == vmtype:
-                    if vm.status == "Starting":
+                    if vm.status == "Starting" or vm.status == "Unpropagated":
                         starting.append(vm)
         return starting
 
@@ -1866,6 +1895,16 @@ class ResourcePool:
         else:
             output = "Could not find Cloud %s." % clustername
         return output
+    
+    def force_retire_vm(self, vm):
+        ret = False
+        if vm:
+            (_, ret2, _, ret22) = self.do_condor_off(vm.condorname, vm.condoraddr, vm.condormasteraddr)
+            if ret2 == 0 and ret22 == 0:
+                vm.force_retire = True
+                vm.override_status = 'Retiring'
+                ret = True
+        return ret
 
     def force_retire_cluster_vm(self, clustername, vmid):
         output = ""
@@ -1873,10 +1912,7 @@ class ResourcePool:
         if cluster:
             vm = cluster.get_vm(vmid)
             if vm:
-                (ret1, ret2, ret21, ret22) = self.do_condor_off(vm.condorname, vm.condoraddr, vm.condormasteraddr)
-                if ret2 == 0 and ret22 == 0:
-                    vm.force_retire = True
-                    vm.override_status = 'Retiring'
+                if self.force_retire_vm(vm):
                     output = "Retired VM %s on %s." % (vmid, clustername)
                 else:
                     output = "Unable to retire VM."
@@ -1891,10 +1927,8 @@ class ResourcePool:
         output = ""
         if cluster:
             for vm in cluster.vms:
-                (ret1, ret2, ret21, ret22) = self.do_condor_off(vm.condorname, vm.condoraddr, vm.condormasteraddr)
-                if ret2 == 0 and ret22 == 0:
-                    vm.force_retire = True
-                    vm.override_status = 'Retiring'
+                if self.force_retire_vm(vm):
+                    pass
                 else:
                     output += "Unable to retire VM %s\n" % vm.id
             output = "Retired all VMs in %s." % cloudname
