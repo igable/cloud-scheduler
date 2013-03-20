@@ -1,3 +1,11 @@
+import os
+import sys
+import time
+import string
+import shutil
+import logging
+import nimbus_xml
+import subprocess
 import cluster_tools
 import cloudscheduler.utilities as utilities
 log = utilities.get_cloudscheduler_logger()
@@ -8,8 +16,8 @@ except ImportError:
     log.error("To use EC2-style clouds, you need to have boto " \
             "installed. You can install it from your package manager, " \
             "or get it from http://code.google.com/p/boto/")
-import time
-import nimbus_xml
+from subprocess import Popen
+from urlparse import urlparse
 
 
 class EC2Cluster(cluster_tools.ICluster):
@@ -317,10 +325,31 @@ class EC2Cluster(cluster_tools.ICluster):
                 vm.last_state_change = int(time.time())
                 log.debug("VM: %s on %s. Changed from %s to %s." % (vm.id, self.name, vm.status, self.VM_STATES.get(instance.state, "Starting")))
             vm.status = self.VM_STATES.get(instance.state, "Starting")
-            vm.hostname = instance.public_dns_name
+            if self.name != 'nova':
+                vm.hostname = instance.public_dns_name
+            else:
+                #vm.ipaddress = instance.ip_address
+                if len(vm.hostname) == 0 or vm.hostname.startswith('server'):
+                    # run a dig -x on the ip address
+                    dig_cmd = ['dig', '-x', instance.ip_address]
+                    (dig_return, dig_out, dig_err) = self.vm_execwait(dig_cmd, env=vm.get_env())
+                    # extract the hostname from dig -x output
+                    vm.hostname = self._extract_host_from_dig(dig_out)
             vm.lastpoll = int(time.time())
         return vm.status
 
+    def _extract_host_from_dig(self, dig_out):
+        at_answer_line = False
+        hostname = ""
+        for line in dig_out.split('\n'):
+            parts = line.split()
+            if at_answer_line:
+                hostname = parts[-1][:-1]
+                break
+            elif 'ANSWER' in parts and 'SECTION:' in parts:
+                at_answer_line = True
+                continue
+        return hostname
 
     def vm_destroy(self, vm, return_resources=True, reason=""):
         """
