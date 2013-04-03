@@ -325,11 +325,13 @@ class EC2Cluster(cluster_tools.ICluster):
                 vm.last_state_change = int(time.time())
                 log.debug("VM: %s on %s. Changed from %s to %s." % (vm.id, self.name, vm.status, self.VM_STATES.get(instance.state, "Starting")))
             vm.status = self.VM_STATES.get(instance.state, "Starting")
-            if self.name != 'nova':
+            #print instance.public_dns_name
+            #print instance.__dict__
+            if self.name != 'nova' and self.name != 'ibex':
                 vm.hostname = instance.public_dns_name
             else:
                 #vm.ipaddress = instance.ip_address
-                if len(vm.hostname) == 0 or vm.hostname.startswith('server'):
+                if len(vm.hostname) == 0 or vm.hostname.endswith('cern.ch'):
                     # run a dig -x on the ip address
                     dig_cmd = ['dig', '-x', instance.ip_address]
                     (dig_return, dig_out, dig_err) = self.vm_execwait(dig_cmd, env=vm.get_env())
@@ -387,3 +389,33 @@ class EC2Cluster(cluster_tools.ICluster):
             self.vms.remove(vm)
 
         return 0
+
+    def vm_execwait(self, cmd, env=None):
+        """As above, a function to encapsulate command execution via Popen.
+        vm_execwait executes the given cmd list, waits for the process to finish,
+        and returns the return code of the process. STDOUT and STDERR are stored
+        in given parameters.
+        Parameters:
+        (cmd as above)
+        Returns:
+            ret   - The return value of the executed command
+            out   - The STDOUT of the executed command
+            err   - The STDERR of the executed command
+        The return of this function is a 3-tuple
+        """
+        out = ""
+        err = ""
+        try:
+            sp = Popen(cmd, shell=False,
+                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+            if not utilities.check_popen_timeout(sp):
+                (out, err) = sp.communicate(input=None)
+            else:
+                log.warning("Process %s timed out! cmd was %" % (sp.pid, " ".join(cmd)))
+            return (sp.returncode, out, err)
+        except OSError, e:
+            log.error("Problem running %s, got errno %d \"%s\"" % (string.join(cmd, " "), e.errno, e.strerror))
+            return (-1, "", "")
+        except:
+            log.error("Problem running %s, unexpected error: %s" % (string.join(cmd, " "), err))
+            return (-1, "", "")
