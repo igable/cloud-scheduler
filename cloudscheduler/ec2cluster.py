@@ -325,19 +325,23 @@ class EC2Cluster(cluster_tools.ICluster):
                 vm.last_state_change = int(time.time())
                 log.debug("VM: %s on %s. Changed from %s to %s." % (vm.id, self.name, vm.status, self.VM_STATES.get(instance.state, "Starting")))
             vm.status = self.VM_STATES.get(instance.state, "Starting")
-            #print instance.public_dns_name
+            #print 'pub dnc: ', instance.public_dns_name
+            #print 'pri_dns: ', instance.private_dns_name
+            #print 'ip add: ', instance.ip_address
             #print instance.__dict__
-            if self.name != 'nova' and self.name != 'ibex':
+            if self.name != 'nova' and self.name != 'ibex' and self.name != 'dair':
                 vm.hostname = instance.public_dns_name
-            else:
+            elif self.name == 'nova' or vm.hostname.endswith('cern.ch'):
                 #vm.ipaddress = instance.ip_address
-                if len(vm.hostname) == 0 or vm.hostname.endswith('cern.ch'):
-                    # run a dig -x on the ip address
-                    dig_cmd = ['dig', '-x', instance.ip_address]
-                    (dig_return, dig_out, dig_err) = self.vm_execwait(dig_cmd, env=vm.get_env())
-                    # extract the hostname from dig -x output
-                    vm.hostname = self._extract_host_from_dig(dig_out)
+                # run a dig -x on the ip address
+                dig_cmd = ['dig', '-x', instance.ip_address]
+                (dig_return, dig_out, dig_err) = self.vm_execwait(dig_cmd, env=vm.get_env())
+                # extract the hostname from dig -x output
+                vm.hostname = self._extract_host_from_dig(dig_out)
+            else:
+                vm.hostname = instance.id
             vm.lastpoll = int(time.time())
+            
         return vm.status
 
     def _extract_host_from_dig(self, dig_out):
