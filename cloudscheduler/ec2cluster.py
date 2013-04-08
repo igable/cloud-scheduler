@@ -331,7 +331,9 @@ class EC2Cluster(cluster_tools.ICluster):
             #print instance.__dict__
             if self.name != 'nova' and self.name != 'ibex' and self.name != 'dair':
                 vm.hostname = instance.public_dns_name
-            elif self.name == 'nova' or vm.hostname.endswith('cern.ch'):
+            elif self.name == 'ibex':
+                vm.hostname = ''.join([instance.public_dns_name, '.cern.ch'])
+            elif self.name == 'nova':
                 #vm.ipaddress = instance.ip_address
                 # run a dig -x on the ip address
                 dig_cmd = ['dig', '-x', instance.ip_address]
