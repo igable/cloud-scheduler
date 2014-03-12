@@ -1,0 +1,130 @@
+#!/usr/bin/env python
+
+import urllib
+import json
+import librato
+import time
+import sys
+import xmlrpclib
+import socket
+import logging
+
+import cloudschedulerstats.config as config
+
+log = logging.getLogger("cloudschedulerstats")
+
+def push_vm_stats(rpc_server, librato_queue, librato_prefix):
+    
+    resources = json.loads(rpc_server.get_json_resource())
+    status_summary = dict()    
+
+    for cluster in resources['resources']:
+        numvms = len(cluster['vms'])
+        clustername = cluster['name']
+        if numvms > 0:
+            status_summary[clustername] = dict()
+            status_summary[clustername]['numvms'] = numvms
+            for vm in cluster['vms']:
+                if status_summary[clustername].has_key(vm['status']):
+                    status_summary[clustername][vm['status']] += 1 
+                else:
+                    status_summary[clustername][vm['status']] = 1
+                
+    known_states = [ 'Starting', 'Running', 'Error', 'Retiring']
+
+    for cluster in status_summary.keys():
+        for state in known_states:
+            if not status_summary[cluster].has_key(state):
+                status_summary[cluster][state] = 0
+            librato_queue.add("%s.csvms.%s" % (librato_prefix, state),status_summary[cluster][state], type='gauge',source=cluster)
+
+def push_job_stats(rpc_server, librato_queue, librato_prefix):
+    job_numbers = dict()
+    log_string = "queing jobs - "
+
+    job_numbers['running'] = rpc_server.get_runningjobs().count("\n")
+    job_numbers['idle'] = rpc_server.get_idlejobs().count("\n")
+    job_numbers['held'] = rpc_server.get_heldjobs().count("\n")
+    job_numbers['unscheduled'] = rpc_server.get_newjobs().count("\n")
+    job_numbers['scheduled'] =rpc_server.get_schedjobs().count("\n")
+    
+    for jobtype in job_numbers.keys():
+        librato_queue.add("%s.condor.jobs" % librato_prefix, job_numbers[jobtype], type='gauge', source=jobtype)
+        # fix to use join
+        log_string = log_string +" %s: %s " % (jobtype.rstrip(), job_numbers[jobtype])
+    log.info(log_string) 
+
+def main(argv=None):
+
+    config.setup()
+    prefix = config.librato_prefix
+    server_hostname = config.info_server_hostname
+    server_port = config.info_server_port
+    interval = config.polling_interval
+    
+    # set up logging
+    # TODO: confim existence of the log file
+    fh = logging.FileHandler(config.log_location)
+    formatter = logging.Formatter(config.log_format)
+    fh.setFormatter(formatter)
+    fh.setLevel(logging.getLevelName(config.log_level))
+    log.addHandler(fh)
+    log.setLevel(logging.getLevelName(config.log_level))
+
+    api = librato.connect(config.librato_user,config.librato_token)
+    queue = api.new_queue()
+    server = xmlrpclib.ServerProxy("http://%s:%s" %
+                              (server_hostname, server_port))
+   
+    log.log(logging.INFO, 'cloud-scheduler-stats started')
+    log.log(logging.INFO, "connecting to info server http://%s:%s" % (server_hostname, server_port))
+
+    previous_fail = False
+    fail_counter = { 'librato':0,'info_server':0 }
+
+    # main loop
+    while True:
+        try:
+            if previous_fail: time.sleep(interval)
+
+            push_vm_stats(rpc_server=server, librato_queue=queue, librato_prefix=prefix)
+            push_job_stats(rpc_server=server, librato_queue=queue, librato_prefix=prefix)
+            queue.submit()
+            previous_fail = False
+            time.sleep(interval)
+
+        except socket.error:
+            log.error("%s: couldn't connect to cloud scheduler at %s on port %s."\
+                   % (sys.argv[0], server_hostname, server_port))
+            log.error("Is the cloud scheduler running on port %s?" % server_port)
+            fail_counter['info_server'] += 1 
+            log.error("will try again at next interval, this has happend %s time(s)" % str(fail_counter['info_server']))
+            previous_fail = True
+        except librato.exceptions.BadRequest as e:
+            log.error('malformed librato request, probably a bug')
+            log.error("%s %s " % (type(e), e))
+            sys.exit(1)
+        except (librato.exceptions.Unauthorized, librato.exceptions.Forbidden) as e:
+            log.error('failed to connect to librato metrics, check your credentials')
+            log.error("%s %s " % (type(e), e))
+            sys.exit(1)
+        except librato.exceptions.NotFound as e:
+            fail_counter['librato'] += 1
+            log.error("librato appears unavailable, this has happend %s time(s) before, will try again at next interval" % str(fail_counter['librato'])) 
+            log.error("%s %s " % (type(e), e))
+            previous_fail = True
+        except SystemExit:
+            log.log(logging.INFO, "stopping cloud-scheduler-stats")
+            sys.exit()
+        except KeyboardInterrupt:
+            log.log(logging.INFO, "recieved keyboard interupt, stopping cloud-scheduler-stats")
+            sys.exit()
+        except Exception as e:
+            log.error('unhandled exception')
+            log.error("%s %s " (type(e), e))
+            sys.exit(1)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+
