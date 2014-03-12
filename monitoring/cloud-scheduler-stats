@@ -79,6 +79,8 @@ def main(argv=None):
     log.log(logging.INFO, 'cloud-scheduler-stats started')
     log.log(logging.INFO, "connecting to info server http://%s:%s" % (server_hostname, server_port))
 
+    api.post_annotation("%s.annotation.cs" % prefix, title="cs stats starting", source=prefix, description="cloud-scheduler-stats deamon starting")
+
     previous_fail = False
     fail_counter = { 'librato':0,'info_server':0 }
 
@@ -86,20 +88,21 @@ def main(argv=None):
     while True:
         try:
             if previous_fail: time.sleep(interval)
-
-            push_vm_stats(rpc_server=server, librato_queue=queue, librato_prefix=prefix)
-            push_job_stats(rpc_server=server, librato_queue=queue, librato_prefix=prefix)
+            try:
+                push_vm_stats(rpc_server=server, librato_queue=queue, librato_prefix=prefix)
+                push_job_stats(rpc_server=server, librato_queue=queue, librato_prefix=prefix)
+            except socket.error:
+                log.error("%s: couldn't connect to cloud scheduler at %s on port %s."\
+                       % (sys.argv[0], server_hostname, server_port))
+                log.error("Is the cloud scheduler running on port %s?" % server_port)
+                fail_counter['info_server'] += 1 
+                log.error("will try again at next interval, this has happend %s time(s)" % str(fail_counter['info_server']))
+                api.post_annotation("%s.annotation.cs" % prefix,title="infoserver fail", source=prefix, description="can't connect to info server, will try again at next interval, this has happend %s time(s)" % str(fail_counter['info_server']))
+                previous_fail = True
             queue.submit()
             previous_fail = False
             time.sleep(interval)
 
-        except socket.error:
-            log.error("%s: couldn't connect to cloud scheduler at %s on port %s."\
-                   % (sys.argv[0], server_hostname, server_port))
-            log.error("Is the cloud scheduler running on port %s?" % server_port)
-            fail_counter['info_server'] += 1 
-            log.error("will try again at next interval, this has happend %s time(s)" % str(fail_counter['info_server']))
-            previous_fail = True
         except librato.exceptions.BadRequest as e:
             log.error('malformed librato request, probably a bug')
             log.error("%s %s " % (type(e), e))
@@ -108,7 +111,7 @@ def main(argv=None):
             log.error('failed to connect to librato metrics, check your credentials')
             log.error("%s %s " % (type(e), e))
             sys.exit(1)
-        except librato.exceptions.NotFound as e:
+        except (librato.exceptions.NotFound, librato.exceptions.ClientError) as e:
             fail_counter['librato'] += 1
             log.error("librato appears unavailable, this has happend %s time(s) before, will try again at next interval" % str(fail_counter['librato'])) 
             log.error("%s %s " % (type(e), e))
@@ -121,7 +124,7 @@ def main(argv=None):
             sys.exit()
         except Exception as e:
             log.error('unhandled exception')
-            log.error("%s %s " (type(e), e))
+            log.error("%s %s " % (type(e), e))
             sys.exit(1)
 
 
