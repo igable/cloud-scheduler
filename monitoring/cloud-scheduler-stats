@@ -99,6 +99,12 @@ def main(argv=None):
                 log.error("will try again at next interval, this has happend %s time(s)" % str(fail_counter['info_server']))
                 api.post_annotation("%s.annotation.cs" % prefix,title="infoserver fail", source=prefix, description="can't connect to info server, will try again at next interval, this has happend %s time(s)" % str(fail_counter['info_server']))
                 previous_fail = True
+            except xmlrpclib.Fault as e:
+                fail_counter['info_server'] += 1
+                failstring = "problem with RPC server, this has happened %s times(s), %s %s" % (str(fail_counter['librato']), type(e), e)
+                log.error(failstring)
+                api.post_annotation("%s.annotation.cs" % prefix,title="infoserver fail", source=prefix, description=failstring)
+                previous_fail = True
             queue.submit()
             previous_fail = False
             time.sleep(interval)
