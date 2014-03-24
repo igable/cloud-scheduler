@@ -91,7 +91,7 @@ def main(argv=None):
             try:
                 push_vm_stats(rpc_server=server, librato_queue=queue, librato_prefix=prefix)
                 push_job_stats(rpc_server=server, librato_queue=queue, librato_prefix=prefix)
-            except socket.error:
+            except (socket.error, socket.gaierror):
                 log.error("%s: couldn't connect to cloud scheduler at %s on port %s."\
                        % (sys.argv[0], server_hostname, server_port))
                 log.error("Is the cloud scheduler running on port %s?" % server_port)
@@ -110,9 +110,8 @@ def main(argv=None):
             time.sleep(interval)
 
         except librato.exceptions.BadRequest as e:
-            log.error('malformed librato request, probably a bug')
-            log.error("%s %s " % (type(e), e))
-            sys.exit(1)
+            log.error("malformed librato request, probably a bug: %s %s %s" % (type(e), e , logging.Formatter("%(message)s").formatException(sys.exc_info())))
+            previous_fail = True
         except (librato.exceptions.Unauthorized, librato.exceptions.Forbidden) as e:
             log.error('failed to connect to librato metrics, check your credentials')
             log.error("%s %s " % (type(e), e))
