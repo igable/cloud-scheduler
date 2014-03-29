@@ -113,14 +113,16 @@ def main(argv=None):
             log.error("malformed librato request, probably a bug: %s %s %s" % (type(e), e , logging.Formatter("%(message)s").formatException(sys.exc_info())))
             previous_fail = True
         except (librato.exceptions.Unauthorized, librato.exceptions.Forbidden) as e:
-            log.error('failed to connect to librato metrics, check your credentials')
-            log.error("%s %s " % (type(e), e))
+            log.error("failed to connect to librato metrics, check your credentials: s% s%" % (type(e), e))
             sys.exit(1)
         except (librato.exceptions.NotFound, librato.exceptions.ClientError) as e:
             fail_counter['librato'] += 1
-            log.error("librato appears unavailable, this has happend %s time(s) before, will try again at next interval" % str(fail_counter['librato'])) 
-            log.error("%s %s " % (type(e), e))
+            log.error("librato appears unavailable, this has happend %s time(s) before, will try again at next interval: %s %s" % (str(fail_counter['librato']), type(e), e)  ) 
             previous_fail = True
+        except socket.error as e:
+            fail_counter['librato'] += 1
+            log.error("librato appears unavailable, this has happend %s time(s) before, will try again at next interval: %s %s" % (str(fail_counter['librato']), type(e), e)  ) 
+            previous_fail = True 
         except SystemExit:
             log.log(logging.INFO, "stopping cloud-scheduler-stats")
             sys.exit()

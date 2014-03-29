@@ -10,12 +10,16 @@ except:
     except:
         print "Couldn't use either setuputils or distutils. Install one of those. :)"
         sys.exit(1)
-import cloudscheduler-stats.__version__ as version
+import cloudschedulerstats.__version__ as version
 
 if not os.geteuid() == 0:
     config_files_dir = os.path.expanduser("~/.cloudscheduler/")
+    # note that you can't initd script as non root
+    # but at least you can install the package
+    initd_dir = config_files_dir
 else:
     config_files_dir = "/etc/cloudscheduler/"
+    initd_dir = "/etc/init.d/"
 config_files = ["cloud_stats.conf"]
 
 # check for preexisting config files
@@ -25,6 +29,9 @@ for config_file in config_files:
         okay_files.append(config_file)
 if okay_files:
     data_files = [(config_files_dir, okay_files)]
+
+# add init.d script
+data_files.append((initd_dir,['scripts/cloud-scheduler-stats']))
 
 setup(name = "cloud-scheduler-stats",
     version = version.version,
@@ -38,4 +45,5 @@ setup(name = "cloud-scheduler-stats",
     url = "http://github.com/hep-gc/cloud-scheduler/monitoring",
     packages = ['cloudschedulerstats'],
     scripts = ["cloud-scheduler-stats"],
+    data_files=data_files,
 ) 
