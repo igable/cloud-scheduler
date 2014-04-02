@@ -32,7 +32,7 @@ prog="cloud-scheduler-stats"
 lockfile=/var/lock/subsys/$prog
 
 # Some functions to make the below more readable
-CSSTATS=/usr/sbin/cloud-scheduler-stats
+CSSTATS=/usr/bin/cloud-scheduler-stats
 PID_FILE=/var/run/cloud-scheduler-stats.pid
 
 runlevel=$(set -- $(runlevel); eval "echo \$$#" )
@@ -56,9 +56,17 @@ start()
 	[ -f /etc/cloudscheduler/cloud_stats.conf ] || exit 6
 
 	echo -n $"Starting $prog: "
-	$CSSTATS $OPTIONS && success || failure
+        #daemon --check --pidfile=$PID_FILE $CSSTATS $OPTIONS &
+        /sbin/runuser -l -s /bin/bash root -c $CSSTATS $OPTIONS & 
 	RETVAL=$?
-	[ $RETVAL -eq 0 ] && touch $lockfile
+
+	if [ $RETVAL -eq 0 ]; then
+		echo $! > $PID_FILE
+		touch $lockfile
+		success
+	else
+		failure 
+	fi
 	echo
 	return $RETVAL
 }
