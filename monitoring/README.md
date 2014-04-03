@@ -37,5 +37,15 @@ It order for the cloud-scheduler-stats to talk to the xmlrpc interface of
 cloud-scheduler the xmlrpc port must be open on you cloud-scheduler instance 
 (default port 8111)
 
+To make the service run at boot and to start it do:
+
+    chkconfig cloud-scheduler-stats on
+    service cloud-scheduler-stats start
+
+
+The log file is stored at:
+
+    /var/log/cloud_stats.log
+
 
 [1]: https://metrics.librato.com
