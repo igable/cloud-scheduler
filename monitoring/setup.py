@@ -37,7 +37,7 @@ setup(name = "cloud-scheduler-stats",
     version = version.version,
     license="'GPL3' or 'Apache 2'",
     install_requires=[
-       "librato-metrics>=0.3.9"
+       "librato-metrics>=0.4.11"
         ],
     description = "A tool for publishing cloud scheduler metrics to librato",
     author = "Ian Gable",
